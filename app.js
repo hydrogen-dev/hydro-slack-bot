@@ -10,33 +10,32 @@ var logger = require('morgan')
 
 var indexRouter = require('./routes/index')
 var balanceRouter = require('./routes/balance')
+var slashCommandsRouter = require('./routes/slashCommands')
 
 var app = express()
 
 // export webhook
 const noahWebhook = new IncomingWebhook(process.env.SLACK_WEBHOOK_URL_NOAH)
+const hydroWebhook = new IncomingWebhook(process.env.SLACK_WEBHOOK_URL_HYDRO)
 app.set('webhooks', {
-  noah: noahWebhook
+  noah: noahWebhook,
+  hydro: hydroWebhook
 })
-sendWebhook = (webhook, text) => {
-  return new Promise(function(resolve, reject) {
-    webhook.send(text, function(err, res) {
-        err === undefined ? reject() : resolve(res)
-    })
-  })
+let sendWebhook = (webhook, text, attachments) => {
+  let payload = attachments === undefined ? text : { text: text, attachments: attachments }
+  return webhook.send(payload)
 }
 app.set('sendWebhook', sendWebhook)
 
-// export webook
+// export etherscan balance query
 app.set('ETHERSCAN_API_KEY', process.env.ETHERSCAN_API_KEY)
-getBalanceEtherscan = (address, apiKey) => {
+let getBalanceEtherscan = (address, apiKey) => {
   let balanceUrl =
-    'https://api.etherscan.io/api?module=account&action=balance&address=' +
-    address +
-    `&tag=latest&apikey=${apiKey}`
+  'https://api.etherscan.io/api?module=account&action=balance&address=' +
+  address +
+  `&tag=latest&apikey=${apiKey}`
 
-  // inject url and authorization
-  options = {
+  let options = {
     url: balanceUrl,
     json: true
   }
@@ -60,14 +59,15 @@ app.use(express.static(path.join(__dirname, 'public')))
 
 app.use('/', indexRouter)
 app.use('/balance', balanceRouter)
+app.use('/slashCommands', slashCommandsRouter)
 
 // catch 404 and forward to error handler
-app.use(function(req, res, next) {
+app.use(function (req, res, next) {
   next(createError(404))
 })
 
 // error handler
-app.use(function(err, req, res, next) {
+app.use(function (err, req, res, next) {
   // set locals, only providing error in development
   res.locals.message = err.message
   res.locals.error = req.app.get('env') === 'development' ? err : {}
@@ -77,9 +77,9 @@ app.use(function(err, req, res, next) {
   res.render('error')
 })
 
-const port = process.env.PORT || 8080;
+const port = process.env.PORT || 8080
 app.listen(port, () => {
   console.log('Express server listening on port', port)
-});
+})
 
 module.exports = app
