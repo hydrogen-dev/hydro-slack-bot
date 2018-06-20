@@ -1,6 +1,7 @@
 require('dotenv').config()
 const requestPromise = require('request-promise')
 const { IncomingWebhook } = require('@slack/client')
+const wwwhisper = require('connect-wwwhisper')
 
 var createError = require('http-errors')
 var express = require('express')
@@ -13,6 +14,7 @@ var balanceRouter = require('./routes/balance')
 var slashCommandsRouter = require('./routes/slashCommands')
 
 var app = express()
+app.use(wwwhisper())
 
 // export webhook
 const noahWebhook = new IncomingWebhook(process.env.SLACK_WEBHOOK_URL_NOAH)
