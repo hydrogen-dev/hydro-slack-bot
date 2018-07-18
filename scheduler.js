@@ -98,13 +98,13 @@ const scheduleCall = (call, waitTime, intervalTime, callImmediately) => {
 
 // schedule calls
 const setKeepAwake = (everyXMinutes) => {
-  var waitTime = getMillisNearest(20, false)
+  var waitTime = getMillisNearest(20)
   var intervalTime = 1000 * 60 * everyXMinutes
   scheduleCall(callIndex, waitTime, intervalTime)
 }
 
 const setGasChecker = (callImmediately, logInterval, hour, minute) => {
-  var waitTime = getMillisNearest(0, true)
+  var waitTime = getMillisNearest(0)
   var intervalTime = 1000 * 60 * logInterval
   scheduleCall(callGas, waitTime, intervalTime, callImmediately)
 
@@ -114,7 +114,7 @@ const setGasChecker = (callImmediately, logInterval, hour, minute) => {
 }
 
 const setBalanceChecker = (callImmediately, logInterval, hour, minute) => {
-  var waitTime = getMillisNearest(0, true)
+  var waitTime = getMillisNearest(0)
   var intervalTime = 1000 * 60 * logInterval
   scheduleCall(callBalance, waitTime, intervalTime, callImmediately)
 
@@ -128,8 +128,8 @@ setTimeout(() => {
   // make sure the app stays awake by calling it every 20 minutes
   setKeepAwake(20)
   // log every hour, call at 9am every day in #hydro
-  setGasChecker(true, 60, 9)
-  setBalanceChecker(true, 60, 9)
+  setGasChecker(false, 60, 9)
+  setBalanceChecker(false, 60, 9)
 }, 1000 * 5)
 
 // const clearTimeoutsIntervals = () => {
