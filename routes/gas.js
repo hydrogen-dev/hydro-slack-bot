@@ -4,6 +4,8 @@ const CoinMarketCap = require('coinmarketcap-api')
 var express = require('express')
 var router = express.Router()
 
+var hydroBeenWarned = false
+
 router.post('/', async (req, res, next) => {
   let notifyHydro = req.body.notifyHydro
 
@@ -39,13 +41,15 @@ router.post('/', async (req, res, next) => {
       let clientRaindropCost =
         (110000 * Math.min(clientRaindropGasDiscount * gasPrice, thresholdGas) / 1e9 * ethPrice).toFixed(2)
 
+      var warning = gasPrice > (thresholdGas / 2)
+
       let attachments = [{
-        'fallback': `Current Gas Price: ${gasPrice} Gwei`,
-        'pretext': ':fuelpump:',
-        'color': '#000000',
-        'title': `Current Gas Price: ${gasPrice} Gwei`,
-        'title_link': `https://ethgasstation.info/`,
-        'fields': [{
+        fallback: `Gas Price Update: ${gasPrice} Gwei`,
+        pretext: warning ? '<!channel> ' : '' + ':fuelpump:',
+        color: warning ? 'warning' : 'good',
+        title: `Gas Price Update\n${gasPrice} Gwei`,
+        title_link: `https://ethgasstation.info/`,
+        fields: [{
           title: 'Server Raindrop Challenge',
           value: `$${serverRaindropChallengeCost}`,
           short: true
@@ -58,13 +62,16 @@ router.post('/', async (req, res, next) => {
         {
           title: 'Client Raindrop Sign Up',
           value: `$${clientRaindropCost}`
-        }
-        ]
+        }]
       }]
 
-      // notify #hydro if the passed flag has been set
-      if (notifyHydro) {
-        await req.app.get('sendWebhook')(req.app.get('webhooks').hydro, attachments)
+      // reset the warning once a successful notification goes through
+      if (!warning) hydroBeenWarned = false
+
+      // notify #hydro if the passed flag has been set or they haven't been warned yet
+      if (notifyHydro || (warning && !hydroBeenWarned)) {
+        await req.app.get('sendWebhook')(req.app.get('webhooks').noah, attachments)
+        if (warning) hydroBeenWarned = true
       }
 
       // log the balance

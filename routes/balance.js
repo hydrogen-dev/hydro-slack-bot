@@ -4,8 +4,10 @@ const requestPromise = require('request-promise')
 var express = require('express')
 var router = express.Router()
 
+var hydroBeenWarned = false
+
 const addressNames = {
-  '0x0fccb4868b7f13ede288aff9298fce67541e3d38': 'Deployment Wallet (Mainnet)'
+  '0x0fCCB4868B7F13EDe288AFF9298fcE67541e3d38': 'Deployment Wallet'
 }
 
 const balanceToEther = (weiBalance) => {
@@ -13,10 +15,6 @@ const balanceToEther = (weiBalance) => {
 }
 
 const getBalanceEtherscan = (address, apiKey) => {
-  if (!ethUtil.isValidAddress(address)) {
-    return Promise.reject(Error(`Invalid Address: '${address}'`))
-  }
-
   let balanceUrl =
     `https://api.etherscan.io/api?module=account&action=balance&address=${address}&tag=latest&apikey=${apiKey}`
 
@@ -35,43 +33,49 @@ router.post('/', function (req, res, next) {
   let notifyHydro = req.body.notifyHydro
 
   let address = req.body.address
+  if (!ethUtil.isValidAddress(address)) throw Error(`Invalid Address: '${address}'`)
+  address = ethUtil.toChecksumAddress(address)
+
   let thresholdBalance = req.body.thresholdBalance
 
-  let addressName = Object.keys(addressNames).includes(address.toLowerCase()) ? addressNames[address.toLowerCase()] : undefined
-  let addressIdentifier = addressName === undefined ? address : addressName
+  let addressName = Object.keys(addressNames).includes(address) ? addressNames[address] : null
+  let addressIdentifier = addressName === null ? address : addressName
 
   getBalanceEtherscan(address, req.app.get('ETHERSCAN_API_KEY'))
     .then(async balance => {
+      var warning = balance <= thresholdBalance
       var attachments
-      if (balance <= thresholdBalance) {
+      if (warning) {
         attachments = [{
-          fallback: `Low Balance Warning: ${addressIdentifier} has only ${balance.toFixed(4)} ETH`,
-          pretext: '<!channel> :warning: Low Balance Warning',
+          fallback: `Low Balance Warning: ${addressIdentifier} has ${balance.toFixed(4)} ETH`,
+          pretext: '<!channel> :money_with_wings:',
           color: 'warning',
-          title: addressIdentifier,
+          title: `Low Balance Warning\n${addressIdentifier}`,
           title_link: `https://etherscan.io/address/${address}`,
-          text: [
-            `This wallet's balance is *${balance.toFixed(4)}* ETH`,
-            `It must always contain at least *${thresholdBalance.toFixed(4)}* ETH`
-          ].join('\n')
+          text:
+            `The balance of this wallet is *${balance.toFixed(4)}* ETH. ` +
+            `It should be at least *${thresholdBalance.toFixed(4)}* ETH.`
         }]
       } else {
         attachments = [{
           fallback: `Balance Update: ${addressIdentifier} has ${balance.toFixed(4)} ETH`,
-          pretext: ':party-parrot: Balance Update',
+          pretext: ':party-parrot:',
           color: 'good',
-          title: addressIdentifier,
+          title: `Balance Update\n${addressIdentifier}`,
           title_link: `https://etherscan.io/address/${address}`,
-          text: [
-            `This wallet's balance is *${balance.toFixed(4)}* ETH`,
-            `It exceeds the threshold balance of *${thresholdBalance.toFixed(4)}* ETH`
-          ].join('\n')
+          text:
+            `The balance of this wallet is *${balance.toFixed(4)}* ETH. ` +
+            `It exceeds the recommended threshold of *${thresholdBalance.toFixed(4)}* ETH.`
         }]
       }
 
-      // notify #hydro if the passed flag has been set
-      if (notifyHydro) {
-        await req.app.get('sendWebhook')(req.app.get('webhooks').hydro, attachments)
+      // reset the warning once a successful notification goes through
+      if (!warning) hydroBeenWarned = false
+
+      // notify #hydro if the passed flag has been set or they haven't been warned yet
+      if (notifyHydro || (warning && !hydroBeenWarned)) {
+        await req.app.get('sendWebhook')(req.app.get('webhooks').noah, attachments)
+        if (warning) hydroBeenWarned = true
       }
 
       // log the balance
