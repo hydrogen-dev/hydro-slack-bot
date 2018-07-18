@@ -1,6 +1,9 @@
 require('dotenv').config()
 const requestPromise = require('request-promise')
 
+const timeouts = []
+const intervals = []
+
 const millisInDay = 1000 * 60 * 60 * 24
 
 const getMillisUntilTime = (hour, minute) => {
@@ -25,7 +28,7 @@ const getIndex = () => {
 
 const setKeepAwake = (minutes) => {
   getIndex()
-  setInterval(() => { getIndex() }, 1000 * 60 * minutes)
+  intervals.push(setInterval(() => { getIndex() }, 1000 * 60 * minutes))
 }
 
 // call /gas
@@ -46,14 +49,14 @@ const callGas = (notifyHydro) => {
 const setGasChecker = (minutes) => {
   // call every hour without notifying #hydro
   callGas(false)
-  setInterval(() => { callGas(false) }, 1000 * 60 * minutes)
+  intervals.push(setInterval(() => { callGas(false) }, 1000 * 60 * minutes))
 
   // notify #hydro at 9:30 every morning
   let millisTillTime = getMillisUntilTime(9, 30)
 
-  setTimeout(() => {
-    setInterval(() => { callGas(true) }, millisInDay)
-  }, millisTillTime)
+  timeouts.push(setTimeout(() => {
+    intervals.push(setInterval(() => { callGas(true) }, millisInDay))
+  }, millisTillTime))
 }
 
 // call /balance
@@ -78,13 +81,13 @@ const callBalance = (notifyHydro) => {
 const setBalanceChecker = (minutes) => {
   // call every hour without notifying #hydro
   callBalance(false)
-  setInterval(() => { callBalance(false) }, 1000 * 60 * minutes)
+  intervals.push(setInterval(() => { callBalance(false) }, 1000 * 60 * minutes))
 
   // notify #hydro at 9:30 every morning
   let millisTillTime = getMillisUntilTime(9, 30)
-  setTimeout(() => {
-    setInterval(() => { callBalance(true) }, millisInDay)
-  }, millisTillTime)
+  timeouts.push(setTimeout(() => {
+    intervals.push(setInterval(() => { callBalance(true) }, millisInDay))
+  }, millisTillTime))
 }
 
 // wait 5 seconds before beginning
@@ -93,3 +96,12 @@ setTimeout(() => {
   setGasChecker(60 * 2)
   setBalanceChecker(60 * 2)
 }, 1000 * 5)
+
+const clearTimeoutsIntervals = () => {
+  timeouts.forEach(x => { clearTimeout(x) })
+  intervals.forEach(x => { clearInterval(x) })
+}
+
+module.exports = {
+  clearTimeoutsIntervals: clearTimeoutsIntervals
+}
