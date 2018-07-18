@@ -12,8 +12,8 @@ const getMillisUntilTime = (hour, minute) => {
   if (minute === undefined) minute = 0
   var now = moment()
 
-  var nowInNewYork = now.clone().tz('America/New_York').utc()
-  var timeInNewYork = now.clone().tz('America/New_York').hour(hour).minute(minute).seconds(0).milliseconds(0).utc()
+  var nowInNewYork = now.clone().tz('America/New_York')
+  var timeInNewYork = now.clone().tz('America/New_York').hour(hour).minute(minute).seconds(0).milliseconds(0)
 
   var diff = timeInNewYork.diff(nowInNewYork)
   if (diff < 0) diff += millisInDay // it's after the time, try again tomorrow
@@ -22,21 +22,28 @@ const getMillisUntilTime = (hour, minute) => {
 }
 
 const getMillisNearest = (minute, evenHour) => {
+  if (minute < 0 || minute > 59) throw Error(`Invalid 'minute' argument: ${minute}`)
   if (evenHour === undefined) evenHour = false
 
   var now = moment()
-  var nowInNewYork = now.clone().tz('America/New_York').utc()
+  var nowInNewYork = now.clone().tz('America/New_York')
 
-  var nearestMinute = Math.ceil(nowInNewYork.minute() / minute) * minute
-  if (nearestMinute >= 60) nearestMinute = minute // if we overflowed, reset back to the smaller interval
+  var nextMinute = minute === 0 ? 0 : Math.ceil((nowInNewYork.minute() + 1) / minute) * minute
+  var hoursToAdd = 0
+  if (nextMinute >= 60 || nextMinute === 0) {
+    hoursToAdd = 1
+    nextMinute = minute
+  }
 
-  var nearestInNewYork = now.clone().tz('America/New_York').minute(nearestMinute).seconds(0).milliseconds(0).utc()
+  var timeInNewYork =
+    now.clone().tz('America/New_York').add(hoursToAdd, 'hour').minute(nextMinute).seconds(0).milliseconds(0)
 
-  var diff = nearestInNewYork.diff(nowInNewYork)
-  if (diff < 0) diff += millisInHour // try again in the next hour
-  if (evenHour && (now.clone().add(diff).hour() % 2) !== 0) diff += millisInHour // satisfy evenness
+  // satisfy evenness
+  if (evenHour && timeInNewYork.hour() % 2 !== 0) {
+    timeInNewYork = now.clone().tz('America/New_York').add(1, 'hour').minute(minute).seconds(0).milliseconds(0)
+  }
 
-  return diff
+  return timeInNewYork.diff(nowInNewYork)
 }
 
 // GET /
@@ -90,15 +97,15 @@ const scheduleCall = (call, waitTime, intervalTime, callImmediately) => {
 
   timeouts.push(setTimeout(() => {
     call()
-    intervals.push(setInterval(() => {
+    intervals.push(intervals.push(setInterval(() => {
       call()
-    }, intervalTime))
+    }, intervalTime)))
   }, waitTime))
 }
 
 // schedule calls
 const setKeepAwake = (everyXMinutes) => {
-  var waitTime = getMillisNearest(20)
+  var waitTime = getMillisNearest(1)
   var intervalTime = 1000 * 60 * everyXMinutes
   scheduleCall(callIndex, waitTime, intervalTime)
 }
@@ -128,8 +135,8 @@ setTimeout(() => {
   // make sure the app stays awake by calling it every 20 minutes
   setKeepAwake(20)
   // log every hour, call at 9am every day in #hydro
-  setGasChecker(false, 60, 9)
-  setBalanceChecker(false, 60, 9)
+  setGasChecker(false, 30, 9)
+  setBalanceChecker(false, 30, 9)
 }, 1000 * 5)
 
 // const clearTimeoutsIntervals = () => {
