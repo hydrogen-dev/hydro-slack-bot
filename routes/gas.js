@@ -4,7 +4,7 @@ const CoinMarketCap = require('coinmarketcap-api')
 var express = require('express')
 var router = express.Router()
 
-var hydroBeenWarned = false
+var hydroBeenWarned = true
 
 router.post('/', async (req, res, next) => {
   let notifyHydro = req.body.notifyHydro
@@ -70,7 +70,7 @@ router.post('/', async (req, res, next) => {
 
       // notify #hydro if the passed flag has been set or they haven't been warned yet
       if (notifyHydro || (warning && !hydroBeenWarned)) {
-        await req.app.get('sendWebhook')(req.app.get('webhooks').noah, attachments)
+        await req.app.get('sendWebhook')(req.app.get('webhooks').hydro, attachments)
         if (warning) hydroBeenWarned = true
       }
 

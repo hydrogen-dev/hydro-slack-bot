@@ -4,7 +4,7 @@ const requestPromise = require('request-promise')
 var express = require('express')
 var router = express.Router()
 
-var hydroBeenWarned = false
+var hydroBeenWarned = true
 
 const addressNames = {
   '0x0fCCB4868B7F13EDe288AFF9298fcE67541e3d38': 'Deployment Wallet'
@@ -74,7 +74,7 @@ router.post('/', function (req, res, next) {
 
       // notify #hydro if the passed flag has been set or they haven't been warned yet
       if (notifyHydro || (warning && !hydroBeenWarned)) {
-        await req.app.get('sendWebhook')(req.app.get('webhooks').noah, attachments)
+        await req.app.get('sendWebhook')(req.app.get('webhooks').hydro, attachments)
         if (warning) hydroBeenWarned = true
       }
 
