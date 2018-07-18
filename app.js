@@ -1,5 +1,6 @@
 require('dotenv').config()
 const { IncomingWebhook } = require('@slack/client')
+const { Pool } = require('pg')
 
 var createError = require('http-errors')
 var express = require('express')
@@ -15,6 +16,16 @@ var balanceRouter = require('./routes/balance')
 var slashCommandsRouter = require('./routes/slashCommands')
 
 var app = express()
+
+// database connection
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: true
+})
+app.set('pool', pool)
+// https://devcenter.heroku.com/articles/getting-started-with-nodejs#provision-a-database
+// let client = app.get('pool').connect()
+// let result = await client.query('SELECT * FROM test_table')
 
 // quiknode
 app.set('QUIKNODE_URL', process.env.QUIKNODE_URL)
