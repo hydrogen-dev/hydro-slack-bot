@@ -1,23 +1,46 @@
 require('dotenv').config()
+const moment = require('moment-timezone')
 const requestPromise = require('request-promise')
 
-const timeouts = []
-const intervals = []
+var timeouts = []
+var intervals = []
 
-const millisInDay = 1000 * 60 * 60 * 24
+const millisInHour = 1000 * 60 * 60
+const millisInDay = millisInHour * 24
 
 const getMillisUntilTime = (hour, minute) => {
-  var now = new Date()
-  var millisTillTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0) - now
-  if (millisTillTime < 0) {
-    millisTillTime += millisInDay // it's after the time, try again tomorrow.
-  }
+  if (minute === undefined) minute = 0
+  var now = moment()
 
-  return millisTillTime
+  var nowInNewYork = now.clone().tz('America/New_York').utc()
+  var timeInNewYork = now.clone().tz('America/New_York').hour(hour).minute(minute).seconds(0).milliseconds(0).utc()
+
+  var diff = timeInNewYork.diff(nowInNewYork)
+  if (diff < 0) diff += millisInDay // it's after the time, try again tomorrow
+
+  return diff
 }
 
-// keep the app awake by GETting / every 20 minutes
-const getIndex = () => {
+const getMillisNearest = (minute, evenHour) => {
+  if (evenHour === undefined) evenHour = false
+
+  var now = moment()
+  var nowInNewYork = now.clone().tz('America/New_York').utc()
+
+  var nearestMinute = Math.ceil(nowInNewYork.minute() / minute) * minute
+  if (nearestMinute >= 60) nearestMinute = minute // if we overflowed, reset back to the smaller interval
+
+  var nearestInNewYork = now.clone().tz('America/New_York').minute(nearestMinute).seconds(0).milliseconds(0).utc()
+
+  var diff = nearestInNewYork.diff(nowInNewYork)
+  if (diff < 0) diff += millisInHour // try again in the next hour
+  if (evenHour && (now.clone().add(diff).hour() % 2) !== 0) diff += millisInHour // satisfy evenness
+
+  return diff
+}
+
+// GET /
+const callIndex = () => {
   requestPromise({
     method: 'GET',
     timeout: 10000, // 10 seconds
@@ -26,84 +49,92 @@ const getIndex = () => {
     .catch(() => {})
 }
 
-const setKeepAwake = (minutes) => {
-  getIndex()
-  intervals.push(setInterval(() => { getIndex() }, 1000 * 60 * minutes))
-}
-
-// call /gas
+// POST /gas
 const callGas = (notifyHydro) => {
+  if (notifyHydro === undefined) notifyHydro = false
+
   let options = {
     method: 'POST',
     timeout: 10000, // 10 seconds
     url: `${process.env.HEROKU_URL}gas`,
+    body: {
+      notifyHydro: notifyHydro
+    },
     json: true
   }
-  if (notifyHydro !== undefined) options.body = { notifyHydro: notifyHydro }
 
   requestPromise(options)
     .catch(() => {})
 }
 
-// schedule calls to /gas
-const setGasChecker = (minutes) => {
-  // call every hour without notifying #hydro
-  callGas(false)
-  intervals.push(setInterval(() => { callGas(false) }, 1000 * 60 * minutes))
-
-  // notify #hydro at 9:30 every morning
-  let millisTillTime = getMillisUntilTime(9, 30)
-
-  timeouts.push(setTimeout(() => {
-    intervals.push(setInterval(() => { callGas(true) }, millisInDay))
-  }, millisTillTime))
-}
-
-// call /balance
+// POST /balance
 const callBalance = (notifyHydro) => {
-  let body = {
-    address: '0x0fccb4868b7f13ede288aff9298fce67541e3d38',
-    thresholdBalance: 1
-  }
-  if (notifyHydro !== undefined) body.notifyHydro = notifyHydro
+  if (notifyHydro === undefined) notifyHydro = false
 
   requestPromise({
     method: 'POST',
     timeout: 10000, // 10 seconds
     url: `${process.env.HEROKU_URL}balance`,
-    body: body,
+    body: {
+      address: '0x0fccb4868b7f13ede288aff9298fce67541e3d38',
+      thresholdBalance: 1,
+      notifyHydro: notifyHydro
+    },
     json: true
   })
     .catch(() => {})
 }
 
-// schedule calls to /balance
-const setBalanceChecker = (minutes) => {
-  // call every hour without notifying #hydro
-  callBalance(false)
-  intervals.push(setInterval(() => { callBalance(false) }, 1000 * 60 * minutes))
+const scheduleCall = (call, waitTime, intervalTime, callImmediately) => {
+  if (callImmediately === true) call()
 
-  // notify #hydro at 9:30 every morning
-  let millisTillTime = getMillisUntilTime(9, 30)
   timeouts.push(setTimeout(() => {
-    intervals.push(setInterval(() => { callBalance(true) }, millisInDay))
-  }, millisTillTime))
+    call()
+    intervals.push(setInterval(() => {
+      call()
+    }, intervalTime))
+  }, waitTime))
+}
+
+// schedule calls
+const setKeepAwake = (everyXMinutes) => {
+  var waitTime = getMillisNearest(20, false)
+  var intervalTime = 1000 * 60 * everyXMinutes
+  scheduleCall(callIndex, waitTime, intervalTime)
+}
+
+const setGasChecker = (callImmediately, logInterval, hour, minute) => {
+  var waitTime = getMillisNearest(0, true)
+  var intervalTime = 1000 * 60 * logInterval
+  scheduleCall(callGas, waitTime, intervalTime, callImmediately)
+
+  waitTime = getMillisUntilTime(hour, minute)
+  intervalTime = millisInDay
+  scheduleCall(() => { callGas(true) }, waitTime, intervalTime)
+}
+
+const setBalanceChecker = (callImmediately, logInterval, hour, minute) => {
+  var waitTime = getMillisNearest(0, true)
+  var intervalTime = 1000 * 60 * logInterval
+  scheduleCall(callBalance, waitTime, intervalTime, callImmediately)
+
+  waitTime = getMillisUntilTime(hour, minute)
+  intervalTime = millisInDay
+  scheduleCall(() => { callBalance(true) }, waitTime, intervalTime)
 }
 
 // wait 5 seconds before beginning
 setTimeout(() => {
+  // make sure the app stays awake by calling it every 20 minutes
   setKeepAwake(20)
-  setGasChecker(60 * 2)
-  setBalanceChecker(60 * 2)
+  // log every hour, call at 9am every day in #hydro
+  setGasChecker(true, 60, 9)
+  setBalanceChecker(true, 60, 9)
 }, 1000 * 5)
 
-const clearTimeoutsIntervals = () => {
-  timeouts.forEach(x => { clearTimeout(x) })
-  intervals.forEach(x => { clearInterval(x) })
-  timeouts = []
-  intervals = []
-}
-
-module.exports = {
-  clearTimeoutsIntervals: clearTimeoutsIntervals
-}
+// const clearTimeoutsIntervals = () => {
+//   timeouts.forEach(x => { clearTimeout(x) })
+//   intervals.forEach(x => { clearInterval(x) })
+//   timeouts = []
+//   intervals = []
+// }
