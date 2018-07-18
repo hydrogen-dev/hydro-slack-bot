@@ -91,10 +91,15 @@ app.use((err, req, res, next) => {
 })
 
 const port = process.env.PORT || 8080
+var scheduler
 app.listen(port, () => {
   console.log('Express server listening on port', port)
   // begin the scheduler
-  require('./scheduler')
+  scheduler = require('./scheduler')
+})
+
+process.on('exit', () => {
+  scheduler.clearTimeoutsIntervals()
 })
 
 module.exports = app
