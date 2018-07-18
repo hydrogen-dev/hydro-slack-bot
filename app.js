@@ -33,7 +33,6 @@ let sendWebhook = (webhook, attachments) => {
   attachments[0].footer_icon = 'https://i.imgur.com/Hzb3Uvy.png'
   attachments[0].footer = '<https://github.com/NoahHydro/hydro-slack-bot|Source Code>'
   attachments[0].ts = Math.floor(new Date() / 1000)
-  console.log(attachments)
   return webhook.send({ attachments: attachments })
 }
 app.set('sendWebhook', sendWebhook)

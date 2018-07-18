@@ -1,5 +1,4 @@
 require('dotenv').config()
-console.log(process.env.HEROKU_URL)
 const requestPromise = require('request-promise')
 
 const millisInDay = 1000 * 60 * 60 * 24
@@ -72,9 +71,7 @@ const callBalance = (notifyHydro) => {
     body: body,
     json: true
   })
-    .catch(error => {
-      console.log(error)
-    })
+    .catch(() => {})
 }
 
 // schedule calls to /balance
