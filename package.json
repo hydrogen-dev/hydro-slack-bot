@@ -1,5 +1,8 @@
 {
   "name": "hydro-slack-bot",
+  "engines": {
+    "node": "10.6.x"
+  },
   "version": "0.0.0",
   "private": true,
   "scripts": {
@@ -7,9 +10,11 @@
   },
   "dependencies": {
     "@slack/client": "^4.3.1",
+    "coinmarketcap-api": "^2.3.2",
     "cookie-parser": "~1.4.3",
     "debug": "~2.6.9",
     "dotenv": "^6.0.0",
+    "ethereumjs-util": "^5.2.0",
     "express": "~4.16.0",
     "http-errors": "~1.6.2",
     "morgan": "~1.9.0",

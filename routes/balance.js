@@ -1,38 +1,90 @@
+const ethUtil = require('ethereumjs-util')
+const requestPromise = require('request-promise')
+
 var express = require('express')
 var router = express.Router()
 
-let balanceToEther = (weiBalance) => {
+const addressNames = {
+  '0x0fccb4868b7f13ede288aff9298fce67541e3d38': 'Deployment Wallet (Mainnet)'
+}
+
+const balanceToEther = (weiBalance) => {
   return parseInt(weiBalance) / 1e18
 }
 
-let addressNames = {
-  '0x0fccb4868b7f13ede288aff9298fce67541e3d38': 'Mainnet Deployment Address'
+const getBalanceEtherscan = (address, apiKey) => {
+  if (!ethUtil.isValidAddress(address)) {
+    return Promise.reject(Error(`Invalid Address: '${address}'`))
+  }
+
+  let balanceUrl =
+    `https://api.etherscan.io/api?module=account&action=balance&address=${address}&tag=latest&apikey=${apiKey}`
+
+  let options = {
+    url: balanceUrl,
+    json: true
+  }
+
+  return requestPromise(options)
+    .then(result => {
+      return balanceToEther(result.result)
+    })
 }
 
-router.get('/:address', function (req, res, next) {
-  let address = req.params.address
-  let addressName = address.toLowerCase() in addressNames ? addressNames[address.toLowerCase()] : undefined
+router.post('/', function (req, res, next) {
+  let notifyHydro = req.body.notifyHydro
 
-  req.app.get('getBalanceEtherscan')(address, req.app.get('ETHERSCAN_API_KEY'))
+  let address = req.body.address
+  let thresholdBalance = req.body.thresholdBalance
+
+  let addressName = Object.keys(addressNames).includes(address.toLowerCase()) ? addressNames[address.toLowerCase()] : undefined
+  let addressIdentifier = addressName === undefined ? address : addressName
+
+  getBalanceEtherscan(address, req.app.get('ETHERSCAN_API_KEY'))
     .then(async balance => {
-      let etherBalance = balanceToEther(balance)
-      if (etherBalance < 0.1) {
-        await req.app.get('sendWebhook')(
-          req.app.get('webhooks').noah,
-          '@channel ⚠️Low Balance Warning⚠️',
-          [{
-            'fallback': `The current balance of ${address} is *${etherBalance.toFixed(4)}* ETH`,
-            'color': 'warning',
-            'title': addressName ? `${addressName}\n${address}` : address,
-            'title_link': `https://etherscan.io/address/${address}`,
-            'text': `Current balance: *${etherBalance.toFixed(4)}* ETH`,
-            'ts': Math.floor(new Date() / 1000)
-          }]
-        )
+      var attachments
+      if (balance <= thresholdBalance) {
+        attachments = [{
+          fallback: `Low Balance Warning: ${addressIdentifier} has only ${balance.toFixed(4)} ETH`,
+          pretext: '<!channel> :warning: Low Balance Warning',
+          color: 'warning',
+          title: addressIdentifier,
+          title_link: `https://etherscan.io/address/${address}`,
+          text: [
+            `This wallet's balance is *${balance.toFixed(4)}* ETH`,
+            `It must always contain at least *${thresholdBalance.toFixed(4)}* ETH`
+          ].join('\n')
+        }]
+      } else {
+        attachments = [{
+          fallback: `Balance Update: ${addressIdentifier} has ${balance.toFixed(4)} ETH`,
+          pretext: ':party-parrot: Balance Update',
+          color: 'good',
+          title: addressIdentifier,
+          title_link: `https://etherscan.io/address/${address}`,
+          text: [
+            `This wallet's balance is *${balance.toFixed(4)}* ETH`,
+            `It exceeds the threshold balance of *${thresholdBalance.toFixed(4)}* ETH`
+          ].join('\n')
+        }]
       }
+
+      // notify #hydro if the passed flag has been set
+      if (notifyHydro) {
+        await req.app.get('sendWebhook')(req.app.get('webhooks').hydro, attachments)
+      }
+
+      // log the balance
+      await req.app.get('sendWebhook')(req.app.get('webhooks').logs, attachments)
+
+      // return
       res.sendStatus(200)
     })
-    .catch(error => { console.log(error); next(error) })
+    .catch(async error => {
+      // forward along to error handlers
+      res.locals.sendSlackError = error
+      next(error)
+    })
 })
 
 module.exports = router
