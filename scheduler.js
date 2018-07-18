@@ -100,6 +100,8 @@ setTimeout(() => {
 const clearTimeoutsIntervals = () => {
   timeouts.forEach(x => { clearTimeout(x) })
   intervals.forEach(x => { clearInterval(x) })
+  timeouts = []
+  intervals = []
 }
 
 module.exports = {
