@@ -135,8 +135,8 @@ setTimeout(() => {
   // make sure the app stays awake by calling it every 20 minutes
   setKeepAwake(20)
   // log every hour, call at 9am every day in #hydro
-  setGasChecker(false, 30, 9)
-  setBalanceChecker(false, 30, 9)
+  setGasChecker(false, 60, 9)
+  setBalanceChecker(false, 60, 9)
 }, 1000 * 5)
 
 // const clearTimeoutsIntervals = () => {
