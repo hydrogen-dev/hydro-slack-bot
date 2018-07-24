@@ -1,6 +1,8 @@
 require('dotenv').config()
 const { IncomingWebhook } = require('@slack/client')
-const { Pool } = require('pg')
+
+var passport = require('passport')
+var Strategy = require('passport-http-bearer').Strategy
 
 var createError = require('http-errors')
 var express = require('express')
@@ -9,25 +11,25 @@ var cookieParser = require('cookie-parser')
 var logger = require('morgan')
 
 var indexRouter = require('./routes/index')
-
 var gasRouter = require('./routes/gas')
 var balanceRouter = require('./routes/balance')
-
 var slashCommandsRouter = require('./routes/slashCommands')
 
 var app = express()
 
 // database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: true
-})
-app.set('pool', pool)
+// const { Pool } = require('pg')
+// const pool = new Pool({
+//   connectionString: process.env.DATABASE_URL,
+//   ssl: true
+// })
+// app.set('pool', pool)
 // https://devcenter.heroku.com/articles/getting-started-with-nodejs#provision-a-database
 // let client = app.get('pool').connect()
 // let result = await client.query('SELECT * FROM test_table')
 
-// quiknode
+// set config variables so we don't have to access them in individual routes
+app.set('SLACK_TOKEN', process.env.SLACK_TOKEN)
 app.set('QUIKNODE_URL', process.env.QUIKNODE_URL)
 
 // webhooks
@@ -61,37 +63,57 @@ app.use(express.urlencoded({ extended: false }))
 app.use(cookieParser())
 app.use(express.static(path.join(__dirname, 'public')))
 
+
+// configure passport auth and authenticate all calls except slashCommands
+passport.use(new Strategy(
+  (token, done) => {
+    return token === process.env.ACCESS_TOKEN ? done(null, true) : done(null, false)
+  }
+))
+
+app.use('/slashCommands', slashCommandsRouter)
+
+app.all('*', passport.authenticate('bearer', { session: false }), (req, res, next) => {
+  next()
+})
+
+// send 204 for favicon requests
+app.get('/favicon.ico', (req, res) => {
+  res.sendStatus(204)
+})
+
+// set up routers
 app.use('/', indexRouter)
 app.use('/gas', gasRouter)
 app.use('/balance', balanceRouter)
-app.use('/slashCommands', slashCommandsRouter)
 
 // catch 404 and forward to error handlers
 app.use((req, res, next) => {
   next(createError(404))
 })
 
+// custom error handler to log errors to slack
 app.use((err, req, res, next) => {
-  // log applicable errors to slack
-  if (res.locals.sendSlackError) {
-    req.app.get('sendWebhook')(
-      req.app.get('webhooks').logs,
-      [{
-        'fallback': `Error while calling ${req.originalUrl}`,
-        'pretext': '<!channel>\n:skull_and_crossbones: Hydro Bot Error',
-        'color': 'danger',
-        'title': `Error: ${req.originalUrl}`,
-        'text': res.locals.sendSlackError.toString(),
-        'ts': Math.floor(new Date() / 1000)
-      }]
-    )
-  }
+  let hook = req.app.get('env') === 'production' ? 'logs' : 'noah'
+
+  req.app.get('sendWebhook')(
+    req.app.get('webhooks')[hook],
+    [{
+      'fallback': `Error while calling ${req.originalUrl}`,
+      'pretext': '<!channel> :skull_and_crossbones:',
+      'color': 'danger',
+      'title': `Bot Error: ${req.originalUrl}`,
+      'text': err.toString(),
+      'ts': Math.floor(new Date() / 1000)
+    }]
+  )
+
   next(err)
 })
 
 // generic error handler
 app.use((err, req, res, next) => {
-  console.error(err)
+  // console.error(err)
   // set locals, only providing error in development
   res.locals.message = err.message
   res.locals.error = req.app.get('env') === 'development' ? err : {}
