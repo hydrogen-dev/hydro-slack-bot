@@ -4,20 +4,16 @@ const CoinMarketCap = require('coinmarketcap-api')
 var express = require('express')
 var router = express.Router()
 
-var hydroBeenWarned = true
+// static(ish) API variable
+const thresholdGas = 40
+const clientRaindropGasDiscount = 0.9
+const challengeGasDiscount = 1
 
-router.post('/', async (req, res, next) => {
-  let notifyHydro = req.body.notifyHydro
-
-  // API variables
-  let thresholdGas = 40
-  let clientRaindropGasDiscount = 0.9
-  let challengeGasDiscount = 1
-
+const getGasPrice = (url) => {
   var options = {
     method: 'POST',
     timeout: 10000, // 10 seconds
-    url: req.app.get('QUIKNODE_URL'),
+    url: url,
     body: {
       jsonrpc: '2.0',
       method: 'eth_gasPrice',
@@ -27,62 +23,79 @@ router.post('/', async (req, res, next) => {
     json: true
   }
 
-  requestPromise(options)
-    .then(async result => {
-      let gasPrice = parseInt(result.result) / 1e9
+  return requestPromise(options)
+    .then(result => {
+      return parseInt(result.result) / 1e9
+    })
+}
 
-      let client = new CoinMarketCap()
-      let ethPrice = await client.getTicker({currency: 'ETH'}).then(result => {
-        return result.data.quotes.USD.price
-      })
-      let serverRaindropChallengeCost =
-        (65000 * Math.min(challengeGasDiscount * gasPrice, thresholdGas) / 1e9 * ethPrice).toFixed(2)
-      let serverRaindropAuthenticateCost = (80000 * gasPrice / 1e9 * ethPrice).toFixed(2)
-      let clientRaindropCost =
-        (110000 * Math.min(clientRaindropGasDiscount * gasPrice, thresholdGas) / 1e9 * ethPrice).toFixed(2)
+const getEthPrice = async () => {
+  let client = new CoinMarketCap()
+  return client.getTicker({currency: 'ETH'})
+    .then(result => {
+      return result.data.quotes.USD.price
+    })
+}
 
-      var warning = gasPrice > (thresholdGas / 2)
+router.post('/', async (req, res, next) => {
+  // validate passed notify arguments
+  let passedHooks = req.body.notify
+  let validHooks = req.app.get('webhooks')
 
-      let attachments = [{
-        fallback: `Gas Price Update: ${gasPrice} Gwei`,
-        pretext: warning ? '<!channel> ' : '' + ':fuelpump:',
-        color: warning ? 'warning' : 'good',
-        title: `Gas Price Update\n${gasPrice} Gwei`,
-        title_link: `https://ethgasstation.info/`,
-        fields: [{
-          title: 'Server Raindrop Challenge',
-          value: `$${serverRaindropChallengeCost}`,
-          short: true
-        },
-        {
-          title: 'Server Raindrop Authenticate',
-          value: `$${serverRaindropAuthenticateCost}`,
-          short: true
-        },
-        {
-          title: 'Client Raindrop Sign Up',
-          value: `$${clientRaindropCost}`
-        }]
-      }]
+  if (!passedHooks.every(hook => { return Object.keys(validHooks).includes(hook) })) {
+    next(Error(`One or more unsupported hooks passed: ${passedHooks}`))
+    return
+  }
 
-      // reset the warning once a successful notification goes through
-      if (!warning) hydroBeenWarned = false
+  // fetch external data
+  let gasPrice, ethPrice
+  try {
+    gasPrice = await getGasPrice(req.app.get('QUIKNODE_URL'))
+    ethPrice = await getEthPrice()
+  } catch (error) {
+    next(error)
+    return
+  }
 
-      // notify #hydro if the passed flag has been set or they haven't been warned yet
-      if (notifyHydro || (warning && !hydroBeenWarned)) {
-        await req.app.get('sendWebhook')(req.app.get('webhooks').hydro, attachments)
-        if (warning) hydroBeenWarned = true
-      }
+  // formulate message
+  let serverRaindropChallengeCost =
+    (65000 * Math.min(challengeGasDiscount * gasPrice, thresholdGas) / 1e9 * ethPrice).toFixed(2)
+  let serverRaindropAuthenticateCost = (80000 * gasPrice / 1e9 * ethPrice).toFixed(2)
+  let clientRaindropCost =
+    (110000 * Math.min(clientRaindropGasDiscount * gasPrice, thresholdGas) / 1e9 * ethPrice).toFixed(2)
 
-      // log the balance
-      await req.app.get('sendWebhook')(req.app.get('webhooks').logs, attachments)
+  var warning = gasPrice > (thresholdGas / 2)
 
-      // return
+  let attachments = [{
+    fallback: `Gas Price Update: ${gasPrice} Gwei`,
+    pretext: warning ? '<!channel> ' : '' + ':fuelpump:',
+    color: warning ? 'warning' : 'good',
+    title: `Gas Price Update\n${gasPrice} Gwei`,
+    title_link: `https://ethgasstation.info/`,
+    fields: [{
+      title: 'Server Raindrop Challenge',
+      value: `$${serverRaindropChallengeCost}`,
+      short: true
+    },
+    {
+      title: 'Server Raindrop Authenticate',
+      value: `$${serverRaindropAuthenticateCost}`,
+      short: true
+    },
+    {
+      title: 'Client Raindrop Sign Up',
+      value: `$${clientRaindropCost}`
+    }]
+  }]
+
+  // send message
+  Promise.all(passedHooks.map(hook => {
+    return req.app.get('sendWebhook')(validHooks[hook], attachments)
+  }))
+    .then(() => {
       res.sendStatus(200)
     })
-    .catch(async error => {
-      // forward along to error handlers
-      res.locals.sendSlackError = error
+    .catch(error => {
       next(error)
     })
 })
