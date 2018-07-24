@@ -151,7 +151,7 @@ const oncePerDay = (call, hour, callImmediately) => {
 // wait 2 seconds before beginning
 setTimeout(() => {
   // make sure the app stays awake by calling it every 20 minutes
-  onceEvery(callIndex, 20, true)
+  scheduleCall(callIndex, getMillisNearest(20), 1000 * 60 * 20, true)
 
   // logs every interval
   onceEvery(() => { callGas(['logs']) }, 60) // log gas every hour
@@ -159,5 +159,5 @@ setTimeout(() => {
 
   // notifications to hydro once per day
   oncePerDay(() => { callGas(['hydro']) }, 9) // call every day in hydro
-  onceEvery(() => { callBalance(['hydro']) }, 9) // log balance every hour
+  oncePerDay(() => { callBalance(['hydro']) }, 9) // log balance every hour
 }, 1000 * 2)
