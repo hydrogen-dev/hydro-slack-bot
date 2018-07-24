@@ -151,7 +151,7 @@ const oncePerDay = (call, hour, callImmediately) => {
 // wait 2 seconds before beginning
 setTimeout(() => {
   // make sure the app stays awake by calling it every 20 minutes
-  onceEvery(callIndex, 20)
+  onceEvery(callIndex, 20, true)
 
   // logs every interval
   onceEvery(() => { callGas(['logs']) }, 60) // log gas every hour
