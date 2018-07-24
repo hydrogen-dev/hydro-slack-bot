@@ -40,6 +40,11 @@ const getMillisNearest = (minute) => {
   return timeInNewYork.diff(nowInNewYork)
 }
 
+const hydroBeenWarned = {
+  gas: true,
+  balance: true
+}
+
 // GET /
 const callIndex = () => {
   let options = {
@@ -51,23 +56,12 @@ const callIndex = () => {
     }
   }
 
-  return requestPromise(options)
+  requestPromise(options)
 }
 
 // POST /gas
 const callGas = (notify) => {
   if (notify === undefined) throw Error('Must notify at least one chat.')
-
-  // var hydroBeenWarned = true
-  //
-  // // reset the warning once a successful notification goes through
-  // if (!warning) hydroBeenWarned = false
-  //
-  // // notify #hydro if the passed flag has been set or they haven't been warned yet
-  // if (notifyHydro || (warning && !hydroBeenWarned)) {
-  //   await req.app.get('sendWebhook')(req.app.get('webhooks').hydro, attachments)
-  //   if (warning) hydroBeenWarned = true
-  // }
 
   let options = {
     method: 'POST',
@@ -82,7 +76,18 @@ const callGas = (notify) => {
     json: true
   }
 
-  return requestPromise(options)
+  requestPromise(options)
+    .then(warning => {
+      // notify #hydro if there's a warning and they haven't been warned yet
+      if (warning && !hydroBeenWarned.gas) {
+        callGas(['hydro'])
+          .then(() => {
+            hydroBeenWarned.gas = true
+          })
+      }
+      // reset flag once a non-warning notification successfully sends
+      if (!warning) hydroBeenWarned.gas = false
+    })
 }
 
 // POST /balance
@@ -104,7 +109,18 @@ const callBalance = (notify) => {
     json: true
   }
 
-  return requestPromise(options)
+  requestPromise(options)
+    .then(warning => {
+      // notify #hydro if there's a warning and they haven't been warned yet
+      if (warning && !hydroBeenWarned.balance) {
+        callBalance(['hydro'])
+          .then(() => {
+            hydroBeenWarned.balance = true
+          })
+      }
+      // reset flag once a non-warning notification successfully sends
+      if (!warning) hydroBeenWarned.balance = false
+    })
 }
 
 const scheduleCall = (call, waitTime, intervalTime, callImmediately) => {
@@ -139,9 +155,9 @@ setTimeout(() => {
 
   // logs every interval
   onceEvery(() => { callGas(['logs']) }, 60) // log gas every hour
-  // onceEvery(() => { callBalance(['logs']) }, 60, true) // log balance every hour
+  onceEvery(() => { callBalance(['logs']) }, 60) // log balance every hour
 
-  // once per days
+  // notifications to hydro once per day
   oncePerDay(() => { callGas(['hydro']) }, 9) // call every day in hydro
-  // onceEvery(() => { callBalance(['hydro']) }, 9) // log balance every hour
+  onceEvery(() => { callBalance(['hydro']) }, 9) // log balance every hour
 }, 1000 * 2)

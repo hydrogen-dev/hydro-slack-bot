@@ -93,7 +93,7 @@ router.post('/', async (req, res, next) => {
     return req.app.get('sendWebhook')(validHooks[hook], attachments)
   }))
     .then(() => {
-      res.sendStatus(200)
+      res.status(200).send(warning)
     })
     .catch(error => {
       next(error)

@@ -4,8 +4,6 @@ const requestPromise = require('request-promise')
 var express = require('express')
 var router = express.Router()
 
-var hydroBeenWarned = true
-
 const addressNames = {
   '0x0fCCB4868B7F13EDe288AFF9298fcE67541e3d38': 'Deployment Wallet'
 }
@@ -29,64 +27,68 @@ const getBalanceEtherscan = (address, apiKey) => {
     })
 }
 
-router.post('/', function (req, res, next) {
-  let notifyHydro = req.body.notifyHydro
+router.post('/', async (req, res, next) => {
+  // validate passed arguments
+  let passedHooks = req.body.notify
+  let validHooks = req.app.get('webhooks')
+
+  if (!passedHooks.every(hook => { return Object.keys(validHooks).includes(hook) })) {
+    next(Error(`One or more unsupported hooks passed: ${passedHooks}`))
+    return
+  }
 
   let address = req.body.address
   if (!ethUtil.isValidAddress(address)) throw Error(`Invalid Address: '${address}'`)
   address = ethUtil.toChecksumAddress(address)
-
-  let thresholdBalance = req.body.thresholdBalance
-
   let addressName = Object.keys(addressNames).includes(address) ? addressNames[address] : null
   let addressIdentifier = addressName === null ? address : addressName
 
-  getBalanceEtherscan(address, req.app.get('ETHERSCAN_API_KEY'))
-    .then(async balance => {
-      var warning = balance <= thresholdBalance
-      var attachments
-      if (warning) {
-        attachments = [{
-          fallback: `Low Balance Warning: ${addressIdentifier} has ${balance.toFixed(4)} ETH`,
-          pretext: '<!channel> :money_with_wings:',
-          color: 'warning',
-          title: `Low Balance Warning\n${addressIdentifier}`,
-          title_link: `https://etherscan.io/address/${address}`,
-          text:
-            `The balance of this wallet is *${balance.toFixed(4)}* ETH. ` +
-            `It should be at least *${thresholdBalance.toFixed(4)}* ETH.`
-        }]
-      } else {
-        attachments = [{
-          fallback: `Balance Update: ${addressIdentifier} has ${balance.toFixed(4)} ETH`,
-          pretext: ':party-parrot:',
-          color: 'good',
-          title: `Balance Update\n${addressIdentifier}`,
-          title_link: `https://etherscan.io/address/${address}`,
-          text:
-            `The balance of this wallet is *${balance.toFixed(4)}* ETH. ` +
-            `It exceeds the recommended threshold of *${thresholdBalance.toFixed(4)}* ETH.`
-        }]
-      }
+  let thresholdBalance = req.body.thresholdBalance
 
-      // reset the warning once a successful notification goes through
-      if (!warning) hydroBeenWarned = false
+  // fetch external data
+  let balance
+  try {
+    balance = await getBalanceEtherscan(address, req.app.get('ETHERSCAN_API_KEY'))
+  } catch (error) {
+    next(error)
+    return
+  }
 
-      // notify #hydro if the passed flag has been set or they haven't been warned yet
-      if (notifyHydro || (warning && !hydroBeenWarned)) {
-        await req.app.get('sendWebhook')(req.app.get('webhooks').hydro, attachments)
-        if (warning) hydroBeenWarned = true
-      }
+  var warning = balance <= thresholdBalance
 
-      // log the balance
-      await req.app.get('sendWebhook')(req.app.get('webhooks').logs, attachments)
+  var attachments
+  if (warning) {
+    attachments = [{
+      fallback: `Low Balance Warning: ${addressIdentifier} has ${balance.toFixed(4)} ETH`,
+      pretext: '<!channel> :money_with_wings:',
+      color: 'warning',
+      title: `Low Balance Warning\n${addressIdentifier}`,
+      title_link: `https://etherscan.io/address/${address}`,
+      text:
+        `The balance of this wallet is *${balance.toFixed(4)}* ETH. ` +
+        `It should be at least *${thresholdBalance.toFixed(4)}* ETH.`
+    }]
+  } else {
+    attachments = [{
+      fallback: `Balance Update: ${addressIdentifier} has ${balance.toFixed(4)} ETH`,
+      pretext: ':party-parrot:',
+      color: 'good',
+      title: `Balance Update\n${addressIdentifier}`,
+      title_link: `https://etherscan.io/address/${address}`,
+      text:
+        `The balance of this wallet is *${balance.toFixed(4)}* ETH. ` +
+        `It exceeds the recommended threshold of *${thresholdBalance.toFixed(4)}* ETH.`
+    }]
+  }
 
-      // return
-      res.sendStatus(200)
+  // send message
+  Promise.all(passedHooks.map(hook => {
+    return req.app.get('sendWebhook')(validHooks[hook], attachments)
+  }))
+    .then(() => {
+      res.status(200).send(warning)
     })
-    .catch(async error => {
-      // forward along to error handlers
-      res.locals.sendSlackError = error
+    .catch(error => {
       next(error)
     })
 })
