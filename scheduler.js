@@ -41,7 +41,7 @@ const getMillisNearest = (minute) => {
 }
 
 const hydroBeenWarned = {
-  gas: true,
+  gas: false,
   balance: true
 }
 
@@ -76,18 +76,7 @@ const callGas = (notify) => {
     json: true
   }
 
-  requestPromise(options)
-    .then(warning => {
-      // notify #hydro if there's a warning and they haven't been warned yet
-      if (warning && !hydroBeenWarned.gas) {
-        callGas(['hydro'])
-          .then(() => {
-            hydroBeenWarned.gas = true
-          })
-      }
-      // reset flag once a non-warning notification successfully sends
-      if (!warning) hydroBeenWarned.gas = false
-    })
+  return requestPromise(options)
 }
 
 // POST /balance
@@ -109,18 +98,7 @@ const callBalance = (notify) => {
     json: true
   }
 
-  requestPromise(options)
-    .then(warning => {
-      // notify #hydro if there's a warning and they haven't been warned yet
-      if (warning && !hydroBeenWarned.balance) {
-        callBalance(['hydro'])
-          .then(() => {
-            hydroBeenWarned.balance = true
-          })
-      }
-      // reset flag once a non-warning notification successfully sends
-      if (!warning) hydroBeenWarned.balance = false
-    })
+  return requestPromise(options)
 }
 
 const scheduleCall = (call, waitTime, intervalTime, callImmediately) => {
@@ -154,10 +132,10 @@ setTimeout(() => {
   scheduleCall(callIndex, getMillisNearest(20), 1000 * 60 * 20, true)
 
   // logs every interval
-  onceEvery(() => { callGas(['logs']) }, 60) // log gas every hour
-  onceEvery(() => { callBalance(['logs']) }, 60) // log balance every hour
+  onceEvery(() => { callGas(['logs']) }, 60)
+  onceEvery(() => { callBalance(['logs']) }, 60)
 
   // notifications to hydro once per day
-  oncePerDay(() => { callGas(['hydro']) }, 9) // call every day in hydro
-  oncePerDay(() => { callBalance(['hydro']) }, 9) // log balance every hour
+  oncePerDay(() => { callGas(['hydro']) }, 9)
+  oncePerDay(() => { callBalance(['hydro']) }, 9)
 }, 1000 * 2)
