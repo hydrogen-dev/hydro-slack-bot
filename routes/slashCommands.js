@@ -22,13 +22,13 @@ const roll = (text) => {
 const choose = (text) => {
   let list = text.split(' ').slice(1)
 
-  if (!list.length > 1) {
+  if (list.length < 2) {
     return { 'response_type': 'ephemeral', 'text': 'Please pass at least two options to /choose.' }
-  }
-
-  return {
-    'response_type': 'in_channel',
-    'text': list[Math.floor(Math.random() * list.length)]
+  } else {
+    return {
+      'response_type': 'in_channel',
+      'text': list[Math.floor(Math.random() * list.length)]
+    }
   }
 }
 
@@ -57,10 +57,10 @@ const validCommands = {
     if (!Object.keys(rngCommandsAliased).includes(command)) {
       res.json({
         'response_type': 'ephemeral',
-        'text': `Please choose one of: ${Object.keys(rngCommands).toString()}!`
+        'text': `Please choose one of: *${Object.keys(rngCommands).join('*, *')}*.`
       })
     } else {
-      res.json(rngCommands[command](text))
+      res.json(rngCommandsAliased[command](text))
     }
   }
 }
